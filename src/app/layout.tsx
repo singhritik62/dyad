@@ -19,79 +19,65 @@ export default function RootLayout({ children }: { children: ReactNode }) {
   const { refreshAppIframe } = useRunApp();
   const previewMode = useAtomValue(previewModeAtom);
   const { settings } = useSettings();
-  const setSelectedComponentsPreview = useSetAtom(
-    selectedComponentsPreviewAtom,
-  );
+  const setSelectedComponentsPreview = useSetAtom(selectedComponentsPreviewAtom);
   const setChatInput = useSetAtom(chatInputValueAtom);
   const selectedAppId = useAtomValue(selectedAppIdAtom);
 
+  /** Handle zoom level update for Electron apps */
   useEffect(() => {
     const zoomLevel = settings?.zoomLevel ?? DEFAULT_ZOOM_LEVEL;
-    const zoomFactor = Number(zoomLevel) / 100;
+    const electronApi = window.electron;
 
-    const electronApi = (
-      window as Window & {
-        electron?: {
-          webFrame?: {
-            setZoomFactor: (factor: number) => void;
-          };
-        };
-      }
-    ).electron;
+    if (!electronApi?.webFrame?.setZoomFactor) return;
 
-    if (electronApi?.webFrame?.setZoomFactor) {
-      electronApi.webFrame.setZoomFactor(zoomFactor);
+    electronApi.webFrame.setZoomFactor(Number(zoomLevel) / 100);
 
-      return () => {
-        electronApi.webFrame?.setZoomFactor(Number(DEFAULT_ZOOM_LEVEL) / 100);
-      };
-    }
+    return () => {
+      electronApi.webFrame?.setZoomFactor(Number(DEFAULT_ZOOM_LEVEL) / 100);
+    };
+  }, [settings]);
 
-    return () => {};
-  }, [settings?.zoomLevel]);
-  // Global keyboard listener for refresh events
+  /** Custom refresh when pressing Cmd/Ctrl + R */
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
-      // Check for Ctrl+R (Windows/Linux) or Cmd+R (macOS)
       if (event.key === "r" && (event.ctrlKey || event.metaKey)) {
-        event.preventDefault(); // Prevent default browser refresh
+        event.preventDefault();
         if (previewMode === "preview") {
-          refreshAppIframe(); // Use our custom refresh function instead
+          refreshAppIframe();
         }
       }
     };
 
-    // Add event listener to document
     document.addEventListener("keydown", handleKeyDown);
-
-    // Cleanup function to remove event listener
-    return () => {
-      document.removeEventListener("keydown", handleKeyDown);
-    };
+    return () => document.removeEventListener("keydown", handleKeyDown);
   }, [refreshAppIframe, previewMode]);
 
+  /** Reset preview selections on app switch */
   useEffect(() => {
     setChatInput("");
     setSelectedComponentsPreview([]);
   }, [selectedAppId]);
 
   return (
-    <>
-      <ThemeProvider>
-        <DeepLinkProvider>
-          <SidebarProvider>
-            <TitleBar />
-            <AppSidebar />
-            <div
-              id="layout-main-content-container"
-              className="flex h-screenish w-full overflow-x-hidden mt-12 mb-4 mr-4 border-t border-l border-border rounded-lg bg-background"
-            >
-              {children}
-            </div>
-            <Toaster richColors />
-          </SidebarProvider>
-        </DeepLinkProvider>
-      </ThemeProvider>
-    </>
+    <ThemeProvider>
+      <DeepLinkProvider>
+        <SidebarProvider>
+          <TitleBar />
+
+          {/* Sidebar only shown outside preview */}
+          {previewMode !== "preview" && <AppSidebar />}
+
+          <div
+            id="layout-main-content-container"
+            className="flex h-screenish w-full overflow-x-hidden mt-12 mb-4 mr-4 
+                       border-t border-l border-border rounded-lg bg-background"
+          >
+            {children}
+          </div>
+
+          <Toaster richColors />
+        </SidebarProvider>
+      </DeepLinkProvider>
+    </ThemeProvider>
   );
 }
